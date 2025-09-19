@@ -1,0 +1,9 @@
+ChimeraX_pyHole.egg-info/PKG-INFO
+ChimeraX_pyHole.egg-info/SOURCES.txt
+ChimeraX_pyHole.egg-info/dependency_links.txt
+ChimeraX_pyHole.egg-info/requires.txt
+ChimeraX_pyHole.egg-info/top_level.txt
+src/__init__.py
+src/holepy-backup.py
+src/holepy.py
+src/tool.py

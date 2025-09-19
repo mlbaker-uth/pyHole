@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BundleInfo name="ChimeraX-pyHole"
+            version="0.2.3"
+            package="chimerax.pyhole"
+            minSessionVersion="1"
+            maxSessionVersion="1">
+
+  <Author>pyHole authors</Author>
+  <Email>pyhole@example.org</Email>
+  <URL>https://example.org/pyhole</URL>
+
+  <Synopsis>pyHole: pore geometry and energetics</Synopsis>
+  <Description>
+    Compute pore-radius profiles (straight/curved centerlines), conductance proxy,
+    hydrophobicity/electrostatics indices, passability; export CSV, centerline and mesh PDB.
+  </Description>
+
+  <Categories>
+    <Category name="Structure Analysis"/>
+  </Categories>
+
+  <Dependencies>
+    <Dependency name="ChimeraX-Core" version="~=1.1"/>
+    <Dependency name="ChimeraX-UI"   version="~=1.0"/>
+  </Dependencies>
+
+  <Classifiers>
+    <!-- EXACTLY 5 fields: Tool :: name :: category :: description -->
+    <ChimeraXClassifier>
+      ChimeraX :: Tool :: pyHole :: Structure Analysis :: Pore geometry and energetics
+    </ChimeraXClassifier>
+  </Classifiers>
+
+</BundleInfo>

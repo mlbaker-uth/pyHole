@@ -1,0 +1,35 @@
+Metadata-Version: 2.4
+Name: ChimeraX-pyHole
+Version: 0.2.3
+Summary: pyHole: pore geometry and energetics
+Home-page: https://example.org/pyhole
+Author: pyHole authors
+Author-email: pyhole@example.org
+Classifier: Framework :: ChimeraX
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Visualization
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Environment :: MacOS X :: Aqua
+Classifier: Environment :: Win32 (MS Windows)
+Classifier: Environment :: X11 Applications
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows :: Windows 10
+Classifier: Operating System :: POSIX :: Linux
+Classifier: ChimeraX :: Bundle :: Structure Analysis :: 1,1 :: chimerax.pyhole ::  :: 
+Classifier: ChimeraX :: Tool :: pyHole :: Structure Analysis :: Pore geometry and energetics
+Requires-Python: >=3.7
+Requires-Dist: ChimeraX-Core~=1.1
+Requires-Dist: ChimeraX-UI~=1.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+Compute pore-radius profiles (straight/curved centerlines), conductance proxy,
+    hydrophobicity/electrostatics indices, passability; export CSV, centerline and mesh PDB.
