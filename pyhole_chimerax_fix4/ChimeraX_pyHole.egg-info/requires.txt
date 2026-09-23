@@ -1,2 +1,5 @@
 ChimeraX-Core~=1.1
 ChimeraX-UI~=1.0
+scipy>=1.7
+gemmi>=0.6.5
+mrcfile>=1.3

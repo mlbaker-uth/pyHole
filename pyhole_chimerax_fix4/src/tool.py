@@ -18,8 +18,11 @@ def _format_reslist(residues):
     toks=[]
     for r in residues:
         try:
-            one=ONE_LETTER.get(r.name.upper(),''); num=getattr(r,'number',None); ch=getattr(r,'chain_id','')
-            if num is None or ch is None: continue
+            one=ONE_LETTER.get(r.name.upper(),''); num=getattr(r,'number',None)
+            ch=getattr(r,'chain_id','')
+            if ch is None or (isinstance(ch,str) and not str(ch).strip()):
+                ch='*'
+            if num is None: continue
             toks.append(f"{one}{num}/{ch}" if one else f"{num}/{ch}")
         except: pass
     return ", ".join(toks)
@@ -44,6 +47,12 @@ class PyHoleTool(ToolInstance):
         b=QPushButton("Get atoms"); b.clicked.connect(lambda:self._fill(self.top)); G.addWidget(b,r,2); r+=1
         G.addWidget(QLabel("Bottom plane"),r,0); self.bot = QLineEdit(); G.addWidget(self.bot,r,1)
         b=QPushButton("Get atoms"); b.clicked.connect(lambda:self._fill(self.bot)); G.addWidget(b,r,2); r+=1
+        self.use_mid = QCheckBox("Mid plane (optional waypoint for bent pores)")
+        self.use_mid.toggled.connect(lambda on: (self.mid.setEnabled(on), self.mid_btn.setEnabled(on)))
+        G.addWidget(self.use_mid,r,0)
+        self.mid = QLineEdit(); self.mid.setEnabled(False); G.addWidget(self.mid,r,1)
+        self.mid_btn=QPushButton("Get atoms"); self.mid_btn.setEnabled(False)
+        self.mid_btn.clicked.connect(lambda:self._fill(self.mid)); G.addWidget(self.mid_btn,r,2); r+=1
         G.addWidget(QLabel("Ion radii file"),r,0); self.vdw = QLineEdit(); G.addWidget(self.vdw,r,1)
         b=QPushButton("Select file"); b.clicked.connect(self._pick_vdw); G.addWidget(b,r,2); r+=1
         G.addWidget(QLabel("Output prefix"),r,0); self.out = QLineEdit(); G.addWidget(self.out,r,1)
@@ -55,22 +64,26 @@ class PyHoleTool(ToolInstance):
         self.probe=QDoubleSpinBox(); self.probe.setDecimals(2); self.probe.setRange(0,20); self.probe.setValue(1.4)
         self.cond=QDoubleSpinBox(); self.cond.setDecimals(2); self.cond.setRange(0,10); self.cond.setValue(1.5)
         self.noH=QCheckBox("No hydrogens"); self.noH.setChecked(True)
+        self.noHet=QCheckBox("Ignore HETATM (ligands/waters/ions)"); self.noHet.setChecked(False)
         O.addWidget(QLabel("Probe (Å)"),r,0); O.addWidget(self.probe,r,1)
         O.addWidget(QLabel("Conductivity (S/m)"),r,2); O.addWidget(self.cond,r,3)
-        O.addWidget(self.noH,r,4); r+=1
+        O.addWidget(self.noH,r,4)
+        O.addWidget(self.noHet,r,5); r+=1
         self.step=QDoubleSpinBox(); self.step.setDecimals(2); self.step.setRange(0.05,20); self.step.setValue(1.0)
         self.eps=QDoubleSpinBox(); self.eps.setDecimals(2); self.eps.setRange(0,5); self.eps.setValue(0.25)
         O.addWidget(QLabel("Step (Å)"),r,0); O.addWidget(self.step,r,1)
         O.addWidget(QLabel("eps (Å)"),r,2); O.addWidget(self.eps,r,3); r+=1
         self.rings=QSpinBox(); self.rings.setRange(6,180); self.rings.setValue(24)
         O.addWidget(QLabel("Rings"),r,0); O.addWidget(self.rings,r,1)
+        self.surface=QCheckBox("Render true pore surface (isosurface)"); self.surface.setChecked(False)
+        O.addWidget(self.surface,r,2,1,2); r+=1
         L.addLayout(O)
 
         # Occupancy / scale
         R = QHBoxLayout()
         R.addWidget(QLabel("Occupancy:"))
-        self.occH=QRadioButton("hydrophobicity"); self.occE=QRadioButton("electrostatics")
-        self.occH.setChecked(True); R.addWidget(self.occH); R.addWidget(self.occE)
+        self.occH=QRadioButton("hydrophobicity"); self.occE=QRadioButton("electrostatics"); self.occR=QRadioButton("radii")
+        self.occH.setChecked(True); R.addWidget(self.occH); R.addWidget(self.occE); R.addWidget(self.occR)
         R.addStretch(1); R.addWidget(QLabel("scale"))
         self.scale=QComboBox(); self.scale.addItems(["raw","01"]); R.addWidget(self.scale)
         L.addLayout(R)
@@ -129,6 +142,7 @@ class PyHoleTool(ToolInstance):
 
             top=self.top.text().strip(),
             bottom=self.bot.text().strip(),
+            mid=(self.mid.text().strip() if self.use_mid.isChecked() else ""),
             vdwjson=self.vdw.text().strip(),
             outprefix=(self.out.text().strip() or "pyhole"),
 
@@ -136,6 +150,7 @@ class PyHoleTool(ToolInstance):
             eps=float(self.eps.value()),
             rings=int(self.rings.value()),
             noH=self.noH.isChecked(),
+            noHet=self.noHet.isChecked(),
 
             probe=float(self.probe.value()),
             conductivity=float(self.cond.value()),
@@ -147,9 +162,11 @@ class PyHoleTool(ToolInstance):
             curve_radius=float(self.crad.value()),
             curve_iters=int(self.cit.value()),
 
-            occupancy=("electro" if self.occE.isChecked() else "hydro"),
+            occupancy=("radii" if self.occR.isChecked() else ("electro" if self.occE.isChecked() else "hydro")),
             hydroscale=self.scale.currentText().lower(),
             electroscale=self.scale.currentText().lower(),
+
+            surface=self.surface.isChecked(),
         )
 
         # UI feedback + start worker
@@ -183,82 +200,152 @@ class PyHoleTool(ToolInstance):
 
             mp = outputs.get("mesh_pdb")
             cp = outputs.get("centerline_pdb")
+            metric = (p.get("occupancy") or "hydro").lower()
+            if metric.startswith("elect"):
+                metric = "electro"
+            elif metric.startswith("rad"):
+                metric = "radii"
+            else:
+                metric = "hydro"
+            electro_scale = str(p.get("electroscale") or "raw").lower()
 
             if mp:
-                cxrun(self.session, f'open "{mp}"')
+                self._style_pore_model(mp, metric=metric, size_centerline=False, electro_scale=electro_scale)
             if cp:
-                # Auto size + color by B-factor (radius) for centerline
-                self._style_centerline_by_bfactor(cp)
+                # Keep centerline radius sizing from B-factor, but color by selected metric.
+                self._style_pore_model(cp, metric=metric, size_centerline=True, electro_scale=electro_scale)
 
             if outputs.get("csv"):
                 self.session.logger.info(f'pyHole CSV: {outputs["csv"]}')
+
+            dm = outputs.get("density_map")
+            if dm:
+                self._render_true_surface(dm)
+
             self.session.logger.status("pyHole: finished.")
 
         # run success callback on the UI thread
         self.session.ui.thread_safe(_done)
    
     # Helpers
-    def _bfactor_minmax_from_pdb(self, path):
-        """Return (min_b, max_b) from ATOM/HETATM B-factor column of a PDB."""
+    def _pdb_attr_minmax(self, path, attr):
+        """Return (min, max) for occupancy or bfactor column in a PDB."""
+        if attr == "occupancy":
+            c0, c1 = 54, 60
+        else:
+            c0, c1 = 60, 66
         minv, maxv = None, None
         try:
             with open(path, 'r') as f:
                 for line in f:
                     if line.startswith(('ATOM  ', 'HETATM')):
-                        # PDB fixed-width: B-factor is cols 61–66 (0-based 60:66)
-                        bs = line[60:66].strip()
-                        if not bs:
+                        vs = line[c0:c1].strip()
+                        if not vs:
                             continue
-                        b = float(bs)
-                        minv = b if minv is None or b < minv else minv
-                        maxv = b if maxv is None or b > maxv else maxv
+                        v = float(vs)
+                        minv = v if minv is None or v < minv else minv
+                        maxv = v if maxv is None or v > maxv else maxv
         except Exception:
             pass
         return minv, maxv
 
-    def _style_centerline_by_bfactor(self, centerline_path):
-        """Open the centerline PDB, size and color by B-factor (radius)."""
+    def _style_pore_model(self, pdb_path, metric="hydro", size_centerline=False, electro_scale="raw"):
+        """Open mesh/centerline and color by selected metric with tool-specific palette."""
         from pathlib import Path
         pre = {getattr(m, 'id_string', getattr(m, 'id', '')) for m in self.session.models.list()}
 
-        # Open centerline
+        # Open model
         try:
-            cxrun(self.session, f'open "{centerline_path}"')
+            cxrun(self.session, f'open "{pdb_path}"')
         except Exception as e:
-            self.session.logger.warning(f"pyHole: could not open centerline PDB: {e}")
+            self.session.logger.warning(f"pyHole: could not open PDB: {e}")
             return
 
         # Find the newly opened model (prefer name match)
         new_models = [m for m in self.session.models.list()
                       if getattr(m, 'id_string', getattr(m, 'id', '')) not in pre]
-        cl_model = None
+        model = None
         if new_models:
-            stem = Path(centerline_path).stem
+            stem = Path(pdb_path).stem
             for m in new_models:
                 if stem in getattr(m, 'name', ''):
-                    cl_model = m
+                    model = m
                     break
-            if cl_model is None:
-                cl_model = new_models[-1]
+            if model is None:
+                model = new_models[-1]
 
-        if cl_model is None:
-            self.session.logger.warning("pyHole: centerline model not found after open.")
+        if model is None:
+            self.session.logger.warning("pyHole: opened model not found after open.")
             return
 
-        # Compute min/max (and mid) radius from B-factor in the file
-        minr, maxr = self._bfactor_minmax_from_pdb(centerline_path)
-        if minr is None or maxr is None or maxr <= minr:
-            # fall back to a reasonable range
-            minr, maxr = 0.5, 8.0
-        mid = 0.5 * (minr + maxr)
+        mid_str = getattr(model, 'id_string', getattr(model, 'id', ''))
 
-        mid_str = getattr(cl_model, 'id_string', getattr(cl_model, 'id', ''))
-        # Size atoms by B-factor (low:value lowRadius:value  high:value highRadius:value)
-        cxrun(self.session, f'size byattribute a:bfactor #{mid_str} {minr:.2f}:{minr:.2f} {maxr:.2f}:{maxr:.2f}')
-        # Color by B-factor with your palette (min:red  mid:white  max:green)
-        cxrun(self.session, f'color byattribute a:bfactor #{mid_str} target cabs '
-                            f'palette {minr:.2f},red:{mid:.2f},white:{maxr:.2f},green')
-    
+        # Optional centerline sizing uses B-factor radius values.
+        if size_centerline:
+            minr, maxr = self._pdb_attr_minmax(pdb_path, "bfactor")
+            if minr is None or maxr is None or maxr <= minr:
+                minr, maxr = 0.5, 8.0
+            cxrun(
+                self.session,
+                f'size byattribute a:bfactor #{mid_str} {minr:.2f}:{minr:.2f} {maxr:.2f}:{maxr:.2f}'
+            )
+
+        # Color by selected metric:
+        # hydro: cyan -> white -> yellow (range from file)
+        # electro: mean formal charge — fixed anchors like legacy pyHole / HOLE-style utilities:
+        #   raw in [-1,1]; scale "01" maps that onto [0,1] with neutral -> 0.5 in writer
+        # radii: red (< water radius) -> white (~water) -> green (> water radius)
+        if metric == "electro":
+            attr_name = "occupancy"
+            if electro_scale == "01":
+                palette = "0,red:0.5,white:1,blue"
+            else:
+                palette = "-1,red:0,white:1,blue"
+        elif metric == "radii":
+            attr_name = "occupancy"
+            cmin, cmax = self._pdb_attr_minmax(pdb_path, attr_name)
+            if cmin is None or cmax is None or cmax <= cmin:
+                cmin, cmax = 0.1, 3.0
+            # Anchor at water radius 1.4 A for continuity with prior behavior.
+            palette = f"{cmin:.2f},red:1.40,white:{cmax:.2f},green"
+        else:
+            attr_name = "occupancy"
+            cmin, cmax = self._pdb_attr_minmax(pdb_path, attr_name)
+            if cmin is None or cmax is None or cmax <= cmin:
+                cmin, cmax = -4.5, 4.5
+            cmid = 0.5 * (cmin + cmax)
+            palette = f"{cmin:.2f},cyan:{cmid:.2f},white:{cmax:.2f},yellow"
+
+        cxrun(
+            self.session,
+            f'color byattribute a:{attr_name} #{mid_str} target cabs palette {palette}'
+        )
+
+    def _render_true_surface(self, density_map_path):
+        """Open the pore density map and isosurface it at level 0, which is
+        exactly the probe-accessible boundary by construction (see
+        build_density_grid()/write_density_map() in holepy.py) -- a real
+        molecular-surface-style rendering of the lumen, not a tube of
+        profiled spheres."""
+        pre = {getattr(m, 'id_string', getattr(m, 'id', '')) for m in self.session.models.list()}
+        try:
+            cxrun(self.session, f'open "{density_map_path}"')
+        except Exception as e:
+            self.session.logger.warning(f"pyHole: could not open density map: {e}")
+            return
+
+        new_models = [m for m in self.session.models.list()
+                      if getattr(m, 'id_string', getattr(m, 'id', '')) not in pre]
+        if not new_models:
+            self.session.logger.warning("pyHole: density map model not found after open.")
+            return
+        model = new_models[-1]
+        mid_str = getattr(model, 'id_string', getattr(model, 'id', ''))
+        try:
+            cxrun(self.session, f'volume #{mid_str} level 0 style surface color light sea green transparency 20')
+        except Exception as e:
+            self.session.logger.warning(f"pyHole: could not isosurface density map: {e}")
+
     def _install_model_triggers(self):
         self._trigger_handlers = []
 
@@ -340,9 +427,16 @@ class PyHoleTool(ToolInstance):
               "--step", str(self.step.value()), "--eps", str(self.eps.value()),
               "--probe", str(self.probe.value()), "--conductivity", str(self.cond.value()),
               "--rings", str(self.rings.value()), "--outprefix", outprefix]
+        if self.use_mid.isChecked() and self.mid.text().strip():
+            args += ["--mid", self.mid.text().strip()]
         if self.noH.isChecked(): args+=["--noH"]
-        if self.occE.isChecked(): args+=["--occupancy","electro","--electroscale",self.scale.currentText()]
-        else: args+=["--occupancy","hydro","--hydroscale",self.scale.currentText()]
+        if self.noHet.isChecked(): args+=["--noHet"]
+        if self.occR.isChecked():
+            args+=["--occupancy","radii"]
+        elif self.occE.isChecked():
+            args+=["--occupancy","electro","--electroscale",self.scale.currentText()]
+        else:
+            args+=["--occupancy","hydro","--hydroscale",self.scale.currentText()]
         if self.curved.isChecked():
             args+=["--centerline","curved","--curve_radius",str(self.crad.value()),"--curve_iters",str(self.cit.value())]
         elif self.adapt.isChecked():

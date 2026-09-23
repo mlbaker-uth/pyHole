@@ -6,7 +6,7 @@ Features
 - Accepts one or more pyHole result prefixes (or CSV/JSON files).
 - Draws radius_A (Å) vs s_A (Å) with consistent axis limits.
 - Shades passability "blocked spans" from the *_summary.json (species-selectable).
-- Annotates min radius and conductance proxy (G_nS).
+- Annotates min radius and the geometric openness index.
 - Supports overlays or an N×M grid with per-panel titles.
 - Saves PNG and/or PDF.
 - Optional secondary axis for hydrophobicity/electrostatics/occupancy.
@@ -127,9 +127,9 @@ def _annotate_stats(ax, summary: dict):
             txts.append(f"min r = {float(summary['min_radius_A']):.2f} Å")
         except Exception:
             pass
-    if 'G_nS' in summary:
+    if 'geometric_openness_index' in summary:
         try:
-            txts.append(f"G ≈ {float(summary['G_nS']):.2f} nS")
+            txts.append(f"openness index ≈ {float(summary['geometric_openness_index']):.3g}")
         except Exception:
             pass
     if not txts:
@@ -167,6 +167,9 @@ def _pick_secondary_column(df, which: str):
     elif which == 'electro':
         col = pick('electro_index', 'electrostatics', 'electro')
         label = "Electrostatics index"
+    elif which == 'area':
+        col = pick('area_A2', 'area', 'true_area')
+        label = "Cross-sectional area (\u00c5\u00b2)"
     else:
         col = pick('occ_value', 'occupancy', 'occ')
         label = "Occupancy value"
@@ -218,6 +221,8 @@ def plot_single(df, summary, *, ax=None, title=None, ylim=None, species=None, hl
                     use_sec_color = 'red'
                 elif secondary == 'hydro':
                     use_sec_color = 'blue'
+                elif secondary == 'area':
+                    use_sec_color = 'green'
                 else:
                     use_sec_color = '0.4'  # gray for occupancy
             if swap_axes:
@@ -261,8 +266,8 @@ def main(argv=None):
     ap.add_argument('--pdf', action='store_true', help="Also save PDF alongside PNG")
     ap.add_argument('--style_paper', action='store_true', help="Apply compact journal-like styling")
     ap.add_argument('--swap_axes', action='store_true', help="Swap axes: radius on X, s_A on Y (vertical profile)")
-    ap.add_argument('--secondary', choices=['hydro','electro','occ'], default=None,
-                    help="Plot a secondary curve: hydrophobicity ('hydro'), electrostatics ('electro'), or occupancy ('occ')")
+    ap.add_argument('--secondary', choices=['hydro','electro','occ','area'], default=None,
+                    help="Plot a secondary curve: hydrophobicity ('hydro'), electrostatics ('electro'), occupancy ('occ'), or true cross-sectional area ('area')")
     ap.add_argument('--sec_ylim', nargs='+', default=None,
                     help="Limits for the secondary axis as two numbers or 'a,b'. Applies to Y when normal, X when --swap_axes.")
     ap.add_argument('--sec_label', default=None, help="Override label for the secondary axis")

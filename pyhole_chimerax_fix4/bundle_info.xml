@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <BundleInfo name="ChimeraX-pyHole"
-            version="0.2.3"
+            version="1.1"
             package="chimerax.pyhole"
             minSessionVersion="1"
             maxSessionVersion="1">
@@ -22,6 +22,15 @@
   <Dependencies>
     <Dependency name="ChimeraX-Core" version="~=1.1"/>
     <Dependency name="ChimeraX-UI"   version="~=1.0"/>
+    <!-- holepy.py builds a KD-tree (scipy.spatial.cKDTree) for pore-clearance
+         search instead of scanning every atom per query point. -->
+    <Dependency name="scipy" version=">=1.7"/>
+    <!-- gemmi is used to transparently convert mmCIF (or any other gemmi-readable
+         format) to legacy PDB before parsing; see ensure_legacy_pdb() in holepy.py. -->
+    <Dependency name="gemmi" version=">=0.6.5"/>
+    <!-- mrcfile writes the true-surface density map (non-crystallographic MRC,
+         MRC2014 ORIGIN convention) for isosurfacing the pore lumen in ChimeraX. -->
+    <Dependency name="mrcfile" version=">=1.3"/>
   </Dependencies>
 
   <Classifiers>
